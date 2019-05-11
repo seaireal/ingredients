@@ -1,0 +1,68 @@
+---
+title: "A Data Approach to Ingredient Discovery for Consumer Packaged Goods (CPG)"
+author: "Zhichao Hu"
+date: "May 6, 2019"
+output: html
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(tabulizer)
+library(openxlsx)
+```
+
+Load data source 1 from pdf using tabulizer
+```{r echo = FALSE, message = FALSE}
+chemical <- extract_tables("1_chemlist.pdf", pages = c(2:35), method = "lattice")
+```
+
+Remove unwanted columns and headers, rename selected comlumns, reformat entries
+```{r echo = FALSE, message = FALSE}
+for(i in 1:34){
+  chemical[[i]] <-  chemical[[i]][-c(1,2),-c(3,9:13)]
+}
+
+chemical_report <- do.call(rbind, chemical) %>% as.data.frame()
+
+names(chemical_report) <- c("index","chemical","cas","cancer","developmental","female_reproductive","male_reproductive")
+
+chemical_report$cas <- chemical_report$cas %>% str_replace("---", "")
+chemical_report$cancer <- chemical_report$cancer %>% str_extract("x") %>% str_replace("x", "1")
+#chemical_report$cancer[is.na(chemical_report$cancer)] <- "*"
+chemical_report$developmental <- chemical_report$developmental %>% str_extract("x") %>% str_replace("x", "1")
+chemical_report$female_reproductive <- chemical_report$female_reproductive %>% str_extract("x") %>% str_replace("x", "1")
+chemical_report$male_reproductive <- chemical_report$male_reproductive %>% str_extract("x") %>% str_replace("x", "1")
+chemical_report[is.na(chemical_report)] <- "0"
+```
+
+Save results on local drive
+```{r echo = FALSE, message = FALSE}
+write_csv(chemical_report, "chemical_report.csv")
+```
+
+Import results from the previous step
+```{r echo = FALSE, message = FALSE}
+chemical_report <- read_csv("chemical_report.csv")
+```
+
+Convert toxicity indications to integer; for each indication, one chemical can only have one citation, score each chemical by number of indications
+```{r echo = FALSE, message = FALSE}
+chemical_cas <- chemical_report %>% filter(cas!="")
+chemical_cas[,4:7] <- map(chemical_cas[,4:7], as.integer)
+chemical_cas <- chemical_cas  %>% separate_rows(cas, sep = "\r") #mixtures listed as two cas #s in one cell
+chemical_cas <- chemical_cas %>% group_by(cas) %>% summarise(cancer=sum(cancer), 
+                                                             developmental=sum(developmental),
+                                                             female_reproductive=sum(female_reproductive),
+                                                             male_reproductive=sum(male_reproductive))
+chemical_cas$cancer[chemical_cas$cancer > 1] = 1
+chemical_cas$developmental[chemical_cas$developmental > 1] = 1
+chemical_cas$female_reproductive[chemical_cas$female_reproductive > 1] = 1
+chemical_cas$male_reproductive[chemical_cas$male_reproductive > 1] = 1
+chemical_cas <- mutate(chemical_cas, score=cancer+developmental+female_reproductive+male_reproductive)
+```
+
+Save results to local file
+```{r echo = FALSE, message = FALSE}
+write_csv(chemical_cas, "chemical_cas.csv")
+```

@@ -1,0 +1,216 @@
+---
+title: "A Data Approach to Ingredient Discovery for Consumer Packaged Goods (CPG)"
+author: "Zhichao Hu"
+date: "May 6, 2019"
+output: ioslides_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse)
+library(tabulizer)
+library(openxlsx)
+library(knitr)
+library(kableExtra)
+library(ggthemes)
+library(plotly)
+library(gtrendsR)
+```
+
+## Data analytics for CPG
+* Ingredient discovery drives growth and innovation
+* Data analytics expedites initial screening
+* Major considerations
+    * Safety, cost, appeal, trend...
+* Data sources
+
+## California safe cosmetics program
+* [Reportable ingredients](https://www.cdph.ca.gov/Programs/CCDPHP/DEODC/OHB/CSCP/CDPH Document Library/chemlist.pdf)
+    * CalEPA - Prop 65
+    * IARC (International Agency for Research on Cancer)
+    * EPA - IRIS (Integrated Risk Information System)
+    * NTP - RoC (Report on Carcinogens)
+    * NTP - OHAT (Office of Health Assessment and Translation)
+* Reporting requirements
+    * Annual sales over one million dollars
+    * Products sold on or after January 1, 2007
+
+## Reportable ingredients
+* Pdf data cleansing with *tabulizer*
+* Separate mixtures with *separate_rows()*
+* Drop entries without cas numbers
+* Format data and score ingredients by toxicity
+
+```{r echo = FALSE, message = FALSE}
+chemical_cas <- read_csv("chemical_cas.csv")
+```
+
+```{r echo = FALSE, message = FALSE, results = "asis"}
+chemical_cas %>% arrange(desc(score)) %>% .[1:5,] %>% kable(format = "html", row.names = FALSE, align = "c") %>% 
+  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = F, font_size = 18)
+```
+
+## Chemicals in cosmetics
+* [Products containing reportable ingredients](https://data.chhs.ca.gov/dataset/chemicals-in-cosmetics/resource/57da6c9a-41a7-44b0-ab8d-815ff2cd5913)
+* Product name, brand, company...
+
+## Most cited companies
+* Company-wise landscape of reported products
+```{r echo = FALSE, message = FALSE}
+chemical_product <- read_csv("2_cscpopendata.csv")
+```
+
+```{r echo = FALSE, message = FALSE}
+company_citation <- chemical_product %>% group_by(CompanyName) %>% summarise(citation = n()) %>% 
+  arrange(desc(citation)) %>% .[1:20,]
+company_citation$CompanyName <- factor(company_citation$CompanyName,levels = company_citation$CompanyName)
+
+brand_citation <- chemical_product %>% select(BrandName)
+brand_citation$BrandName <- str_replace(brand_citation$BrandName,"SEPHORA", "Sephora")
+brand_citation <- brand_citation %>% group_by(BrandName) %>% summarise(citation = n()) %>% 
+  arrange(desc(citation)) %>% .[1:20,]
+brand_citation$BrandName <- factor(brand_citation$BrandName, levels = brand_citation$BrandName)
+
+category_citation <- chemical_product %>% group_by(PrimaryCategory) %>% summarise(citation = n()) %>% 
+  arrange(desc(citation))
+```
+<div class="centered">
+```{r echo = FALSE, message = FALSE}
+ggplot(company_citation, aes(reorder(CompanyName, citation), citation, fill = CompanyName)) + 
+  geom_col(show.legend = FALSE) + xlab(NULL) + coord_flip() + ggtitle("Top 20 Most Cited Companies") +
+  theme(plot.title = element_text(hjust = 0.5)) + theme_economist() + scale_fill_hue(l = 50)
+```
+</div>
+
+## Most cited brands
+* Brand-wise landscape of reported products
+
+<div class="centered">
+```{r echo = FALSE, message = FALSE}
+ggplot(brand_citation, aes(reorder(BrandName, citation), citation, fill = BrandName)) + 
+  geom_col(show.legend = FALSE) + xlab(NULL) + coord_flip() + ggtitle("Top 20 Most Cited Brands") +
+  theme(plot.title = element_text(hjust = 0.5)) + theme_economist() + scale_fill_hue(l = 50)
+```
+</div>
+
+## Reported products by category
+<div class="centered">
+```{r echo = FALSE, message = FALSE}
+plot_ly(category_citation, labels = ~PrimaryCategory, values = ~citation) %>% 
+  add_pie(hole = 0.6) %>% 
+  layout(title = "<b>Primary Category by Citation</b>",  showlegend = T,
+         xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE),
+         yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE))
+```
+</div>
+
+## Most cited ingredients in oral care
+* TiO~2~ is used as a colorant or opacifier
+```{r echo = FALSE, message = TRUE}
+oral_care <- chemical_product %>% filter(PrimaryCategory == "Oral Hygiene Products")
+```
+
+```{r echo = FALSE, message = TRUE}
+oral_care$ProductName <- str_replace(oral_care$ProductName, "Burt.s", "Burt's")
+oral_care$BrandName <- str_replace(oral_care$BrandName, "Burt.s", "Burt's")
+oral_care_cas <- oral_care %>% filter(CasNumber != "")
+oral_care %>% group_by(CasNumber, ChemicalName) %>% summarise(citation = n()) %>% arrange(desc(citation)) %>% 
+  kable(format = "html", row.names = FALSE, align = "c") %>% 
+  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = F, font_size = 18)
+```
+
+## Health concerns of TiO~2~
+
+```{r echo = FALSE, message = TRUE}
+oral_care_cas %>% group_by(CasNumber, ChemicalName) %>% summarise(citation = n()) %>% 
+  inner_join(chemical_cas, by = c("CasNumber" = "cas")) %>% 
+  kable(format = "html", row.names = FALSE, align = "c", col.names = c("cas", "name", "citation", "cancer", "developmental", "female<br/>reproductive", "male<br/>reproductive", "score"), escape = FALSE) %>% 
+  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = F, font_size = 18)
+```
+
+## What do consumers think about TiO~2~
+* Google Trends (US, last 5 years)
+    * Titanium dioxide v.s. Taylor Swift
+```{r echo = FALSE, message = TRUE, cache = TRUE}
+tio2_trend <- gtrends("Titanium dioxide", geo = "US", time = "today 12-m")
+#taylor_trend <- gtrends("Taylor Swift", geo = "US")
+tio2_taylor <- gtrends(c("Titanium dioxide", "Taylor Swift"), geo = "US")
+
+tio2_taylor_trend <- tio2_taylor$interest_over_time
+
+tio2_taylor_trend_1 <- tio2_taylor_trend %>% filter(keyword == "Titanium dioxide")
+
+tio2_taylor_trend_2 <- tio2_taylor_trend %>% filter(keyword == "Taylor Swift")
+
+date <- tio2_taylor_trend_1$date
+
+tio2_hits <- tio2_taylor_trend_1$hits %>% str_replace("<1", "0") %>% as.integer()
+
+taylor_hits <- tio2_taylor_trend_2$hits %>% as.integer()
+
+tio2_taylor_df <- data.frame(date, tio2_hits, taylor_hits)
+
+names(tio2_taylor_df) <- c("date", "Titanium dioxide", "Taylor Swift")
+
+```
+
+<div class="centered">
+```{r echo = FALSE, message = TRUE}
+plot_ly(tio2_taylor_df, x = ~date, y = ~tio2_hits, type = "scatter", mode = "lines", name = "Titanium dioxide", 
+        line = list(color = "blue", width = 4)) %>% 
+  add_trace(y = ~taylor_hits, name = "Taylor Swift", line = list(color = "red", width = 4)) %>% 
+  layout(title = "<b>Relative Search Interest over Time (US)</b>",  showlegend = T,
+         xaxis = list(title = FALSE),
+         yaxis = list(title = "Relative Interest"))
+```
+</div>
+
+## What do consumers associate TiO~2~ with
+* Related queries by relative interest
+* US, past 12 months
+
+```{r echo = FALSE, message = TRUE}
+tio2_trend[["related_queries"]] %>% filter(related_queries == "top") %>% select(subject, value) %>% 
+  plyr::rename(c("subject" = "relative_interest","value" = "query")) %>% 
+  filter(relative_interest == "100"|str_detect(query, "safe|cancer|bad|dangers|toxic")) %>% 
+  kable(format = "html", row.names = FALSE, align = "c") %>% 
+  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = F, font_size = 18)
+```
+
+```{r echo = FALSE, message = TRUE, cache = TRUE}
+chemical_use <- read.xlsx("3_cpcat_chemicals.xlsx", sheet = 1)
+#chemical_use %>%  filter(CASRN == " 13463-67-7") %>% select(Description_CPCAT) %>% distinct() %>% nrow()
+```
+
+## What can we do
+* Replace ingredients of concern
+* Smilarity by use or function
+* EPA [Chemical and Products Database](https://comptox.epa.gov/dashboard/downloads)
+    * CPCATARCHIVE (> 43,000 chemicals)
+* List function of TiO~2~
+    * Abrasive, absorbent, colorant...341 total functions
+
+## Create whitelist of similar ingredients
+* Subset EPA database by *personal_care cosmetics colorant*
+* Remove reportable ingredients
+<div class="centered">
+```{r echo = FALSE, message = TRUE, results = "asis"}
+chemical_color <- chemical_use %>% filter(Description_CPCAT == "personal_care cosmetics colorant") %>%
+  select(CASRN, Name) %>% distinct()
+chemical_color$CASRN <- chemical_color$CASRN %>% str_replace(" ", "")
+chemical_color_safe <- anti_join(chemical_color, chemical_cas, by = c("CASRN" = "cas"))
+chemical_color_safe %>% .[c(30,46,100,118,163,164),] %>% 
+  kable(format = "html", row.names = FALSE, align = "c") %>% 
+  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = F, font_size = 18)
+
+#write_csv(chemical_color, "chemical_color.csv")
+#write_csv(chemical_color_safe, "chemical_color_safe.csv")
+```
+</div>
+
+* [Bismuth oxychloride](https://en.wikipedia.org/wiki/Bismuth_oxychloride): It has been used in cosmetics since the days of ancient Egypt. It is part of the "pearly pigment found in eye shadow, hair sprays, powders, nail polishes, and other cosmetic products". (Wikipedia)
+
+## Conclusions
+* Data approach to ingredient discovery
+* Public data sources
+* Applicable to other categories
