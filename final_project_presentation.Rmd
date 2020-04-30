@@ -10,11 +10,11 @@ knitr::opts_chunk$set(echo = FALSE)
 library(tidyverse)
 library(tabulizer)
 library(openxlsx)
-library(knitr)
 library(kableExtra)
 library(ggthemes)
 library(plotly)
 library(gtrendsR)
+library(knitr)
 ```
 
 ## Data analytics for CPG
