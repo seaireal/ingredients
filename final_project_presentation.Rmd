@@ -214,3 +214,4 @@ chemical_color_safe %>% .[c(30,46,100,118,163,164),] %>%
 * Data approach to ingredient discovery
 * Public data sources
 * Applicable to other categories
+* Catalyst for growth and innovation
